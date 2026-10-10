@@ -15,6 +15,7 @@ import {
   ApiOperation,
   ApiTags,
 } from '@nestjs/swagger';
+import { ErrorResponseDto } from '../common/dto/error-response.dto';
 import { CreateShowingDto } from './dto/create-showing.dto';
 import { FindShowingsQueryDto } from './dto/find-showings-query.dto';
 import { ShowingView } from './entities/showing.entity';
@@ -29,6 +30,7 @@ export class ShowingsController {
   @ApiOperation({ summary: 'Create a showing' })
   @ApiCreatedResponse({ type: ShowingView, description: 'Showing created' })
   @ApiBadRequestResponse({
+    type: ErrorResponseDto,
     description:
       'Film or hall not found, startsAt invalid or in the past, price not a positive integer',
   })
@@ -43,7 +45,10 @@ export class ShowingsController {
       'Optional filters combine with AND. `date` matches the UTC date part of startsAt. Sorted by startsAt ascending, ties by id.',
   })
   @ApiOkResponse({ type: ShowingView, isArray: true })
-  @ApiBadRequestResponse({ description: 'Invalid filmId or date format' })
+  @ApiBadRequestResponse({
+    type: ErrorResponseDto,
+    description: 'Invalid filmId or date format',
+  })
   findAll(@Query() query: FindShowingsQueryDto): ShowingView[] {
     return this.showingsService.findAll(query);
   }
@@ -51,8 +56,14 @@ export class ShowingsController {
   @Get(':id')
   @ApiOperation({ summary: 'Get a showing by id' })
   @ApiOkResponse({ type: ShowingView })
-  @ApiBadRequestResponse({ description: 'id is not a UUID' })
-  @ApiNotFoundResponse({ description: 'Showing not found' })
+  @ApiBadRequestResponse({
+    type: ErrorResponseDto,
+    description: 'id is not a UUID',
+  })
+  @ApiNotFoundResponse({
+    type: ErrorResponseDto,
+    description: 'Showing not found',
+  })
   findOne(@Param('id', ParseUUIDPipe) id: string): ShowingView {
     return this.showingsService.findOne(id);
   }

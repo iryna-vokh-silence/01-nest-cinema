@@ -2,16 +2,23 @@ import { ApiProperty } from '@nestjs/swagger';
 import { Seat } from '../../common/seat';
 
 export class Booking {
-  @ApiProperty({ format: 'uuid' })
+  @ApiProperty({
+    format: 'uuid',
+    example: '1b9d6bcd-bbfd-4b2d-9b5d-ab8dfbbd4bed',
+  })
   id: string;
 
-  @ApiProperty({ format: 'uuid' })
+  @ApiProperty({
+    format: 'uuid',
+    example: '9b1deb4d-3b7d-4bad-9bdd-2b0d7b3dcb6d',
+  })
   showingId: string;
 
   @ApiProperty({ type: Seat, isArray: true })
   seats: Seat[];
 
   @ApiProperty({
+    type: 'integer',
     example: 30000,
     description: 'Showing price × number of seats, in kopecks',
   })

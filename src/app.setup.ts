@@ -11,6 +11,9 @@ export function configureApp(app: INestApplication): void {
       whitelist: true,
       transform: true,
       forbidNonWhitelisted: false,
+      // One message per invalid property, e.g. a missing field reports only
+      // "x should not be null or undefined" instead of every failing rule.
+      stopAtFirstError: true,
     }),
   );
 }

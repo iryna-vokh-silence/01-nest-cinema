@@ -2,15 +2,18 @@ import {
   BadRequestException,
   ConflictException,
   Injectable,
+  InternalServerErrorException,
   NotFoundException,
 } from '@nestjs/common';
 import { randomUUID } from 'node:crypto';
-import { formatSeat, Seat, seatKey } from '../common/seat';
+import { formatSeat, seatKey } from '../common/seat';
+import { Hall } from '../halls/entities/hall.entity';
 import { HallsService } from '../halls/halls.service';
-import { SeatStatus } from '../showings/entities/showing.entity';
+import { Showing } from '../showings/entities/showing.entity';
 import { ShowingsService } from '../showings/showings.service';
 import { CreateBookingDto } from './dto/create-booking.dto';
 import { Booking } from './entities/booking.entity';
+import { SeatStatus } from './entities/seat-status.entity';
 
 @Injectable()
 export class BookingsService {
@@ -38,11 +41,7 @@ export class BookingsService {
    */
   create(showingId: string, dto: CreateBookingDto): Booking {
     const showing = this.showingsService.getEntity(showingId); // 404
-    const hall = this.hallsService.findById(showing.hallId);
-    if (!hall) {
-      // Cannot normally happen: halls with showings cannot be deleted.
-      throw new NotFoundException(`Hall with id ${showing.hallId} not found`);
-    }
+    const hall = this.getHallOfShowing(showing);
 
     const outside = dto.seats.filter(
       (s) => !this.hallsService.isSeatInHall(hall, s),
@@ -74,10 +73,7 @@ export class BookingsService {
   /** Seat map of a showing: every hall seat with its booking status. */
   getSeatStatuses(showingId: string): SeatStatus[] {
     const showing = this.showingsService.getEntity(showingId); // 404
-    const hall = this.hallsService.findById(showing.hallId);
-    if (!hall) {
-      throw new NotFoundException(`Hall with id ${showing.hallId} not found`);
-    }
+    const hall = this.getHallOfShowing(showing);
     const booked = this.bookedSeatKeys(showingId);
     return this.hallsService
       .computeSeats(hall)
@@ -92,11 +88,22 @@ export class BookingsService {
     this.bookings.splice(index, 1);
   }
 
+  /** Halls with showings cannot be deleted, so a missing hall is a bug. */
+  private getHallOfShowing(showing: Showing): Hall {
+    const hall = this.hallsService.findById(showing.hallId);
+    if (!hall) {
+      throw new InternalServerErrorException(
+        `Showing ${showing.id} references a missing hall ${showing.hallId}`,
+      );
+    }
+    return hall;
+  }
+
   private bookedSeatKeys(showingId: string): Set<string> {
     const keys = new Set<string>();
     for (const booking of this.bookings) {
       if (booking.showingId !== showingId) continue;
-      booking.seats.forEach((s: Seat) => keys.add(seatKey(s)));
+      booking.seats.forEach((s) => keys.add(seatKey(s)));
     }
     return keys;
   }

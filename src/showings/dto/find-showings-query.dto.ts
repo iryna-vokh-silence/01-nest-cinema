@@ -6,9 +6,13 @@ import {
 } from '../../common/validators/is-calendar-date.decorator';
 
 export class FindShowingsQueryDto {
-  @ApiPropertyOptional({ format: 'uuid', description: 'Filter by film' })
-  @IsOptional()
+  @ApiPropertyOptional({
+    format: 'uuid',
+    example: '3f2b8c1e-7a4d-4e9b-9c1a-2d5e6f7a8b9c',
+    description: 'Filter by film',
+  })
   @IsUUID()
+  @IsOptional()
   filmId?: string;
 
   @ApiPropertyOptional({
@@ -17,7 +21,8 @@ export class FindShowingsQueryDto {
       'Only showings starting on this day (YYYY-MM-DD, compared in UTC)',
   })
   @IsOptional()
-  @Matches(CALENDAR_DATE_REGEX, { message: 'date must match YYYY-MM-DD' })
+  // Bottom-up: the format check runs first, then the real-date check.
   @IsCalendarDate()
+  @Matches(CALENDAR_DATE_REGEX, { message: 'date must match YYYY-MM-DD' })
   date?: string;
 }

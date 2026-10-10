@@ -225,6 +225,28 @@ Content-Type: application/json
   "releaseYear": 2014
 }
 
+### Film: whitespace-only title (trimmed to "")
+# Expected: 400 Bad Request
+POST {{baseUrl}}/films
+Content-Type: application/json
+
+{
+  "title": "   ",
+  "durationMinutes": 120,
+  "releaseYear": 2014
+}
+
+### Film: durationMinutes above the limit (max 1000)
+# Expected: 400 Bad Request
+POST {{baseUrl}}/films
+Content-Type: application/json
+
+{
+  "title": "Too long",
+  "durationMinutes": 1001,
+  "releaseYear": 2014
+}
+
 ### Film: not found
 # Expected: 404 Not Found
 GET {{baseUrl}}/films/{{missingId}}
@@ -240,6 +262,15 @@ Content-Type: application/json
 
 {
   "durationMinutes": -10
+}
+
+### Film: PATCH with whitespace-only title
+# Expected: 400 Bad Request
+PATCH {{baseUrl}}/films/{{filmId}}
+Content-Type: application/json
+
+{
+  "title": "   "
 }
 
 ### Film: PATCH not found
@@ -292,6 +323,28 @@ Content-Type: application/json
   "name": "Negative",
   "rows": 0,
   "seatsPerRow": -5
+}
+
+### Hall: whitespace-only name (trimmed to "")
+# Expected: 400 Bad Request
+POST {{baseUrl}}/halls
+Content-Type: application/json
+
+{
+  "name": "   ",
+  "rows": 3,
+  "seatsPerRow": 5
+}
+
+### Hall: rows and seatsPerRow above the limit (max 50 each)
+# Expected: 400 Bad Request
+POST {{baseUrl}}/halls
+Content-Type: application/json
+
+{
+  "name": "Huge hall",
+  "rows": 51,
+  "seatsPerRow": 100000
 }
 
 ### Hall: duplicate name
@@ -391,6 +444,18 @@ Content-Type: application/json
   "hallId": "{{hallId}}",
   "startsAt": "2030-01-15T18:00:00.000Z",
   "price": 150.5
+}
+
+### Showing: price above the limit (max 10 000 000 kopecks)
+# Expected: 400 Bad Request
+POST {{baseUrl}}/showings
+Content-Type: application/json
+
+{
+  "filmId": "{{filmId}}",
+  "hallId": "{{hallId}}",
+  "startsAt": "2030-01-15T18:00:00.000Z",
+  "price": 10000001
 }
 
 ### Showing: bad date filter format

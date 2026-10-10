@@ -1,3 +1,5 @@
+import { Logger } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
 import { NestFactory } from '@nestjs/core';
 import { AppModule } from './app.module';
 import { configureApp, setupSwagger } from './app.setup';
@@ -7,10 +9,12 @@ async function bootstrap(): Promise<void> {
   configureApp(app);
   setupSwagger(app);
 
-  const port = process.env.PORT ?? 3000;
+  const port = app.get(ConfigService).get<number>('PORT', 3000);
   await app.listen(port);
-  console.log(`Cinema API is running on http://localhost:${port}`);
-  console.log(`Swagger UI: http://localhost:${port}/docs`);
+
+  const logger = new Logger('Bootstrap');
+  logger.log(`Cinema API is running on http://localhost:${port}`);
+  logger.log(`Swagger UI: http://localhost:${port}/docs`);
 }
 
 void bootstrap();

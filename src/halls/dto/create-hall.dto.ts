@@ -1,24 +1,52 @@
 import { ApiProperty } from '@nestjs/swagger';
-import { IsInt, IsNotEmpty, IsString, MaxLength, Min } from 'class-validator';
+import {
+  IsDefined,
+  IsInt,
+  IsNotEmpty,
+  IsString,
+  Max,
+  MaxLength,
+  Min,
+} from 'class-validator';
+import {
+  MAX_HALL_NAME_LENGTH,
+  MAX_ROWS,
+  MAX_SEATS_PER_ROW,
+} from '../../common/limits';
+import { Trim } from '../../common/transforms/trim.transform';
 
+// Decorators run bottom-up; with stopAtFirstError only the first failure
+// (type before range) is reported.
 export class CreateHallDto {
   @ApiProperty({
     example: 'Red Hall',
-    maxLength: 100,
-    description: 'Unique (case-insensitive, surrounding spaces ignored)',
+    maxLength: MAX_HALL_NAME_LENGTH,
+    description:
+      'Unique (case-insensitive); surrounding spaces are trimmed; must not be blank',
   })
-  @IsString()
+  @MaxLength(MAX_HALL_NAME_LENGTH)
   @IsNotEmpty()
-  @MaxLength(100)
+  @IsString()
+  @IsDefined()
+  @Trim()
   name: string;
 
-  @ApiProperty({ example: 3, minimum: 1, description: 'Positive integer' })
-  @IsInt()
+  @ApiProperty({ type: 'integer', example: 3, minimum: 1, maximum: MAX_ROWS })
+  @Max(MAX_ROWS)
   @Min(1)
+  @IsInt()
+  @IsDefined()
   rows: number;
 
-  @ApiProperty({ example: 5, minimum: 1, description: 'Positive integer' })
-  @IsInt()
+  @ApiProperty({
+    type: 'integer',
+    example: 5,
+    minimum: 1,
+    maximum: MAX_SEATS_PER_ROW,
+  })
+  @Max(MAX_SEATS_PER_ROW)
   @Min(1)
+  @IsInt()
+  @IsDefined()
   seatsPerRow: number;
 }

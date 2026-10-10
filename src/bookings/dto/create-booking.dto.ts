@@ -4,27 +4,16 @@ import {
   ArrayNotEmpty,
   ArrayUnique,
   IsArray,
-  IsInt,
-  Min,
+  IsDefined,
+  IsObject,
   ValidateNested,
 } from 'class-validator';
-
-export class SeatDto {
-  @ApiProperty({ example: 1, minimum: 1, description: '1-based row number' })
-  @IsInt()
-  @Min(1)
-  row: number;
-
-  @ApiProperty({ example: 3, minimum: 1, description: '1-based seat in row' })
-  @IsInt()
-  @Min(1)
-  seat: number;
-}
+import { Seat } from '../../common/seat';
 
 /** Identifier used to detect duplicate seats; tolerant to malformed items. */
 function seatIdentifier(item: unknown): string {
   if (item && typeof item === 'object') {
-    const { row, seat } = item as Partial<SeatDto>;
+    const { row, seat } = item as Partial<Seat>;
     return `${String(row)}:${String(seat)}`;
   }
   return JSON.stringify(item);
@@ -32,21 +21,26 @@ function seatIdentifier(item: unknown): string {
 
 export class CreateBookingDto {
   @ApiProperty({
-    type: SeatDto,
+    type: Seat,
     isArray: true,
     minItems: 1,
-    description: 'Seats to book; must be non-empty and without duplicates',
+    description:
+      'Seats to book; must be non-empty and without duplicates. Every seat must be inside the hall.',
     example: [
       { row: 1, seat: 1 },
       { row: 1, seat: 2 },
     ],
   })
-  @IsArray()
-  @ArrayNotEmpty({ message: 'seats must contain at least one seat' })
+  // Decorators run bottom-up and stop at the first failure, so the duplicate
+  // check only runs for a non-empty array of objects.
+  @ValidateNested({ each: true })
   @ArrayUnique(seatIdentifier, {
     message: 'seats must not contain duplicate seats',
   })
-  @ValidateNested({ each: true })
-  @Type(() => SeatDto)
-  seats: SeatDto[];
+  @IsObject({ each: true, message: 'each seat must be an object {row, seat}' })
+  @ArrayNotEmpty({ message: 'seats must contain at least one seat' })
+  @IsArray({ message: 'seats must be an array of {row, seat} objects' })
+  @IsDefined()
+  @Type(() => Seat)
+  seats: Seat[];
 }

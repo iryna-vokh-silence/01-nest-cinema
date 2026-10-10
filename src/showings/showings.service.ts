@@ -3,6 +3,7 @@ import {
   forwardRef,
   Inject,
   Injectable,
+  InternalServerErrorException,
   NotFoundException,
 } from '@nestjs/common';
 import { randomUUID } from 'node:crypto';
@@ -88,13 +89,18 @@ export class ShowingsService {
   }
 
   private toView(showing: Showing): ShowingView {
-    // Films/halls with showings cannot be deleted, so both always exist.
+    // Films/halls with showings cannot be deleted, so both must exist.
     const film = this.filmsService.findById(showing.filmId);
     const hall = this.hallsService.findById(showing.hallId);
+    if (!film || !hall) {
+      throw new InternalServerErrorException(
+        `Showing ${showing.id} references a missing ${film ? 'hall' : 'film'}`,
+      );
+    }
     return {
       id: showing.id,
-      filmTitle: film?.title ?? '',
-      hallName: hall?.name ?? '',
+      filmTitle: film.title,
+      hallName: hall.name,
       startsAt: showing.startsAt,
       price: showing.price,
     };

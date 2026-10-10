@@ -16,7 +16,7 @@ REST API для кінотеатру: фільми, зали, сеанси та 
 - NestJS 11 (`@nestjs/common`, `@nestjs/core`, `@nestjs/platform-express`)
 - `class-validator` + `class-transformer` — валідація DTO
 - `@nestjs/swagger` — документація API (Swagger UI)
-- `@nestjs/config` — читання `.env`
+- `@nestjs/config` — читання `.env` (`PORT` береться через `ConfigService`)
 - Jest + Supertest — e2e-тести; ESLint + Prettier — стиль коду
 
 ## Запуск
@@ -50,9 +50,9 @@ npx prettier --check src test
 
 | Сутність | Поля |
 |---|---|
-| Film | `id`, `title` (рядок), `durationMinutes` (ціле > 0), `releaseYear` (ціле, 1888–2100) |
-| Hall | `id`, `name` (унікальна), `rows` (ціле > 0), `seatsPerRow` (ціле > 0) |
-| Showing | `id`, `filmId`, `hallId`, `startsAt` (ISO 8601), `price` (ціле > 0, у **копійках**) |
+| Film | `id`, `title` (непорожній рядок, до 200 символів), `durationMinutes` (ціле, 1–1000), `releaseYear` (ціле, 1888–2100) |
+| Hall | `id`, `name` (унікальна, непорожня, до 100 символів), `rows` (ціле, 1–50), `seatsPerRow` (ціле, 1–50) |
+| Showing | `id`, `filmId`, `hallId`, `startsAt` (ISO 8601), `price` (ціле, 1–10 000 000, у **копійках**) |
 | Booking | `id`, `showingId`, `seats: [{ row, seat }]`, `totalPrice = price × кількість місць` |
 
 - Окремої сутності «місце» немає: місця зали обчислюються як `rows × seatsPerRow`,
@@ -64,7 +64,7 @@ npx prettier --check src test
 ### Фільми
 | Метод | Шлях | Відповіді |
 |---|---|---|
-| POST | `/films` | 201 фільм · 400 відсутнє поле / неправильний тип |
+| POST | `/films` | 201 фільм · 400 відсутнє/порожнє поле, неправильний тип, вихід за межі |
 | GET | `/films` | 200 масив |
 | GET | `/films/:id` | 200 · 404 |
 | PATCH | `/films/:id` | 200 оновлений фільм (будь-яка підмножина полів) · 400 · 404 |
@@ -73,7 +73,7 @@ npx prettier --check src test
 ### Зали
 | Метод | Шлях | Відповіді |
 |---|---|---|
-| POST | `/halls` | 201 · 400 · 409 зала з такою назвою вже існує |
+| POST | `/halls` | 201 · 400 (відсутнє/порожнє поле, тип, не в межах 1–50) · 409 зала з такою назвою вже існує |
 | GET | `/halls` | 200 масив |
 | GET | `/halls/:id` | 200 зала + `seats: [{ row, seat }]` (3×5 → 15 місць) · 404 |
 | DELETE | `/halls/:id` | 204 · 404 · 409 якщо є сеанси в цій залі |
@@ -81,7 +81,7 @@ npx prettier --check src test
 ### Сеанси
 | Метод | Шлях | Відповіді |
 |---|---|---|
-| POST | `/showings` | 201 · 400 фільм/зала не знайдені, некоректна або минула дата, ціна не додатне ціле |
+| POST | `/showings` | 201 · 400 фільм/зала не знайдені, некоректна або минула дата, ціна не ціле в межах 1–10 000 000 |
 | GET | `/showings?filmId=&date=` | 200 масив · 400 неправильний формат дати |
 | GET | `/showings/:id` | 200 · 404 |
 | GET | `/showings/:id/seats` | 200 `[{ row, seat, isBooked }]` · 404 |
@@ -105,6 +105,18 @@ npx prettier --check src test
   діапазони, формати, вкладені об'єкти та дублікати місць у масиві.
   Сервіси перевіряють те, що залежить від стану: існування сутностей, межі зали,
   зайнятість місць, залежні сеанси, унікальність назви зали, дату в майбутньому.
+- **Обрізання пробілів.** `title` фільму та `name` зали обрізаються (`@Transform` + `trim()`)
+  ще до валідації, тож рядок із самих пробілів (`"   "`) дає 400 `should not be empty`
+  (і при створенні, і при `PATCH`).
+- **Верхні межі** (захист від надто великих запитів; напр. зала 100000×100000
+  «повісила» б сервер на `GET /halls/:id`): `rows` ≤ 50, `seatsPerRow` ≤ 50,
+  `durationMinutes` ≤ 1000, `price` ≤ 10 000 000 копійок (100 000 грн). Межі вказані й у Swagger.
+- **Повідомлення валідації.** `ValidationPipe` працює зі `stopAtFirstError: true`:
+  на кожне поле — одне повідомлення (спершу «відсутнє», потім тип, потім діапазон),
+  напр. `title should not be null or undefined`. Для місць у бронюванні:
+  `each seat must be an object {row, seat}`, `seats must not contain duplicate seats`.
+- **Формат помилок** (описаний у Swagger як `ErrorResponseDto`):
+  `{ "statusCode": 400, "message": "..." | ["..."], "error": "Bad Request" }`.
 - **Whitelist.** Глобальний `ValidationPipe({ whitelist: true, transform: true })`
   відкидає зайві поля з тіла запиту (без помилки).
 - **Неіснуючий фільм/зала при створенні сеансу → 400**, а не 404: це помилка в тілі
@@ -144,12 +156,14 @@ npx prettier --check src test
 ```
 src/
   main.ts, app.module.ts, app.setup.ts   # bootstrap, ValidationPipe, Swagger
-  common/                                # Seat, кастомні валідатори
+  common/                                # Seat, ErrorResponseDto, межі (limits.ts),
+                                         # Trim, кастомні валідатори
   films/      # FilmsController, FilmsService, DTO
   halls/      # HallsController, HallsService (обчислення місць)
   showings/   # ShowingsController, ShowingsService (фільтри, сортування)
   bookings/   # BookingsController (/bookings), ShowingBookingsController
-              # (/showings/:id/bookings, /showings/:id/seats), BookingsService
+              # (/showings/:id/bookings), ShowingSeatsController
+              # (/showings/:id/seats, у Swagger під тегом showings), BookingsService
 test/app.e2e-spec.ts                     # e2e-тести всіх маршрутів і помилок
 requests.http                            # колекція запитів
 ```
