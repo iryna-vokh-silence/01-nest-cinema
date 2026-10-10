@@ -19,6 +19,7 @@ import {
   ApiOperation,
   ApiTags,
 } from '@nestjs/swagger';
+import { ErrorResponseDto } from '../common/dto/error-response.dto';
 import { CreateHallDto } from './dto/create-hall.dto';
 import { Hall, HallWithSeats } from './entities/hall.entity';
 import { HallsService } from './halls.service';
@@ -32,9 +33,13 @@ export class HallsController {
   @ApiOperation({ summary: 'Create a hall' })
   @ApiCreatedResponse({ type: Hall, description: 'Hall created' })
   @ApiBadRequestResponse({
+    type: ErrorResponseDto,
     description: 'Missing field, wrong type or not a positive integer',
   })
-  @ApiConflictResponse({ description: 'Hall with this name already exists' })
+  @ApiConflictResponse({
+    type: ErrorResponseDto,
+    description: 'Hall with this name already exists',
+  })
   create(@Body() dto: CreateHallDto): Hall {
     return this.hallsService.create(dto);
   }
@@ -49,8 +54,14 @@ export class HallsController {
   @Get(':id')
   @ApiOperation({ summary: 'Get a hall with its computed seat list' })
   @ApiOkResponse({ type: HallWithSeats })
-  @ApiBadRequestResponse({ description: 'id is not a UUID' })
-  @ApiNotFoundResponse({ description: 'Hall not found' })
+  @ApiBadRequestResponse({
+    type: ErrorResponseDto,
+    description: 'id is not a UUID',
+  })
+  @ApiNotFoundResponse({
+    type: ErrorResponseDto,
+    description: 'Hall not found',
+  })
   findOne(@Param('id', ParseUUIDPipe) id: string): HallWithSeats {
     return this.hallsService.findOneWithSeats(id);
   }
@@ -59,9 +70,18 @@ export class HallsController {
   @HttpCode(HttpStatus.NO_CONTENT)
   @ApiOperation({ summary: 'Delete a hall' })
   @ApiNoContentResponse({ description: 'Hall deleted' })
-  @ApiBadRequestResponse({ description: 'id is not a UUID' })
-  @ApiNotFoundResponse({ description: 'Hall not found' })
-  @ApiConflictResponse({ description: 'Hall is referenced by a showing' })
+  @ApiBadRequestResponse({
+    type: ErrorResponseDto,
+    description: 'id is not a UUID',
+  })
+  @ApiNotFoundResponse({
+    type: ErrorResponseDto,
+    description: 'Hall not found',
+  })
+  @ApiConflictResponse({
+    type: ErrorResponseDto,
+    description: 'Hall is referenced by a showing',
+  })
   remove(@Param('id', ParseUUIDPipe) id: string): void {
     this.hallsService.remove(id);
   }

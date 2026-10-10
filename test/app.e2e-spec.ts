@@ -3,7 +3,7 @@ import { Test, TestingModule } from '@nestjs/testing';
 import request from 'supertest';
 import { App } from 'supertest/types';
 import { AppModule } from '../src/app.module';
-import { configureApp } from '../src/app.setup';
+import { configureApp, setupSwagger } from '../src/app.setup';
 
 const MISSING_ID = '00000000-0000-4000-8000-000000000000';
 const FUTURE = '2030-01-15T18:00:00.000Z';
@@ -34,6 +34,7 @@ describe('Cinema API (e2e)', () => {
 
     app = moduleFixture.createNestApplication();
     configureApp(app);
+    setupSwagger(app);
     await app.init();
     http = app.getHttpServer();
   });
@@ -113,6 +114,29 @@ describe('Cinema API (e2e)', () => {
       'releaseYear',
       'title',
     ]);
+  });
+
+  it('serves the Swagger document at /docs-json', async () => {
+    const res = await request(http).get('/docs-json').expect(200);
+    const doc = res.body as {
+      paths: Record<string, Record<string, { tags: string[] }>>;
+      components: {
+        schemas: Record<
+          string,
+          { properties: Record<string, { type?: string; maximum?: number }> }
+        >;
+      };
+    };
+    expect(doc.paths['/showings/{id}/seats'].get.tags).toEqual(['showings']);
+    const { schemas } = doc.components;
+    expect(schemas.ErrorResponseDto).toBeDefined();
+    expect(schemas.CreateHallDto.properties.rows).toMatchObject({
+      type: 'integer',
+      maximum: 50,
+    });
+    expect(schemas.CreateShowingDto.properties.price.type).toBe('integer');
+    expect(schemas.Seat.properties.row.type).toBe('integer');
+    expect(schemas.Booking.properties.totalPrice.type).toBe('integer');
   });
 
   it('returns 400 for a non-UUID :id', async () => {
@@ -523,6 +547,130 @@ describe('Cinema API (e2e)', () => {
       ]);
       expect(seats[0]).toEqual({ row: 1, seat: 1, isBooked: false });
       await request(http).get(`/showings/${MISSING_ID}/seats`).expect(404);
+    });
+  });
+
+  // ---------- trimming, limits and messages ----------
+
+  describe('trimming, limits and validation messages', () => {
+    it('trims film titles and rejects whitespace-only titles (create + PATCH)', async () => {
+      const created = await request(http)
+        .post('/films')
+        .send({ title: '  Dune  ', durationMinutes: 155, releaseYear: 2021 })
+        .expect(201);
+      expect((created.body as { title: string }).title).toBe('Dune');
+      const id = (created.body as IdBody).id;
+
+      const blank = await request(http)
+        .post('/films')
+        .send({ title: '   ', durationMinutes: 155, releaseYear: 2021 })
+        .expect(400);
+      expect(messageOf(blank.body)).toBe('title should not be empty');
+
+      await request(http)
+        .patch(`/films/${id}`)
+        .send({ title: ' \t ' })
+        .expect(400);
+      await request(http)
+        .patch(`/films/${id}`)
+        .send({ title: '  Dune: Part Two ' })
+        .expect(200)
+        .expect((r) =>
+          expect((r.body as { title: string }).title).toBe('Dune: Part Two'),
+        );
+    });
+
+    it('trims hall names and rejects whitespace-only names', async () => {
+      const res = await request(http)
+        .post('/halls')
+        .send({ name: '   ', rows: 3, seatsPerRow: 5 })
+        .expect(400);
+      expect(messageOf(res.body)).toBe('name should not be empty');
+      const created = await request(http)
+        .post('/halls')
+        .send({ name: '  Blue  ', rows: 3, seatsPerRow: 5 })
+        .expect(201);
+      expect((created.body as { name: string }).name).toBe('Blue');
+    });
+
+    it('limits durationMinutes to 1000', async () => {
+      await createFilm({ durationMinutes: 1000 });
+      const res = await request(http)
+        .post('/films')
+        .send({ title: 'Long', durationMinutes: 1001, releaseYear: 2000 })
+        .expect(400);
+      expect(messageOf(res.body)).toBe(
+        'durationMinutes must not be greater than 1000',
+      );
+    });
+
+    it('limits rows and seatsPerRow to 50', async () => {
+      const id = await createHall({ name: 'Max', rows: 50, seatsPerRow: 50 });
+      const hall = await request(http).get(`/halls/${id}`).expect(200);
+      expect((hall.body as { seats: unknown[] }).seats).toHaveLength(2500);
+
+      const res = await request(http)
+        .post('/halls')
+        .send({ name: 'Huge', rows: 100000, seatsPerRow: 100000 })
+        .expect(400);
+      expect(messageOf(res.body)).toBe(
+        'rows must not be greater than 50; seatsPerRow must not be greater than 50',
+      );
+      await request(http)
+        .post('/halls')
+        .send({ name: 'Wide', rows: 1, seatsPerRow: 51 })
+        .expect(400);
+    });
+
+    it('limits price to 10 000 000 kopecks', async () => {
+      const filmId = await createFilm();
+      const hallId = await createHall();
+      await createShowing(filmId, hallId, { price: 10_000_000 });
+      const res = await request(http)
+        .post('/showings')
+        .send({ filmId, hallId, startsAt: FUTURE, price: 10_000_001 })
+        .expect(400);
+      expect(messageOf(res.body)).toBe(
+        'price must not exceed 10000000 kopecks',
+      );
+    });
+
+    it('reports one message per missing field', async () => {
+      const res = await request(http).post('/films').send({}).expect(400);
+      expect((res.body as ErrorBody).message).toEqual([
+        'title should not be null or undefined',
+        'durationMinutes should not be null or undefined',
+        'releaseYear should not be null or undefined',
+      ]);
+    });
+
+    it('gives clear messages for malformed seats', async () => {
+      const { showingId } = await setupShowing();
+      const url = `/showings/${showingId}/bookings`;
+      const message = async (body: object): Promise<string> =>
+        messageOf((await request(http).post(url).send(body).expect(400)).body);
+
+      expect(await message({})).toBe('seats should not be null or undefined');
+      expect(await message({ seats: 'A1' })).toBe(
+        'seats must be an array of {row, seat} objects',
+      );
+      expect(await message({ seats: [] })).toBe(
+        'seats must contain at least one seat',
+      );
+      expect(await message({ seats: [null, null] })).toBe(
+        'each seat must be an object {row, seat}',
+      );
+      expect(await message({ seats: [{ row: 1 }] })).toBe(
+        'seats.0.seat should not be null or undefined',
+      );
+      expect(
+        await message({
+          seats: [
+            { row: 1, seat: 1 },
+            { row: 1, seat: 1 },
+          ],
+        }),
+      ).toBe('seats must not contain duplicate seats');
     });
   });
 

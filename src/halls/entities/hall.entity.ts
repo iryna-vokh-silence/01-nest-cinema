@@ -2,16 +2,19 @@ import { ApiProperty } from '@nestjs/swagger';
 import { Seat } from '../../common/seat';
 
 export class Hall {
-  @ApiProperty({ format: 'uuid' })
+  @ApiProperty({
+    format: 'uuid',
+    example: '7c9e6679-7425-40de-944b-e07fc1f90ae7',
+  })
   id: string;
 
   @ApiProperty({ example: 'Red Hall' })
   name: string;
 
-  @ApiProperty({ example: 3, minimum: 1 })
+  @ApiProperty({ type: 'integer', example: 3, minimum: 1 })
   rows: number;
 
-  @ApiProperty({ example: 5, minimum: 1 })
+  @ApiProperty({ type: 'integer', example: 5, minimum: 1 })
   seatsPerRow: number;
 }
 
